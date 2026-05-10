@@ -29,8 +29,8 @@ M.lut_parts = {
 M.lut = table.concat(M.lut_parts)
 
 function M.get_first_letter(char)
-  local ok, code = pcall(utf8.codepoint, char)
-  if not ok then return nil end
+  local code = vim.fn.char2nr(char)
+  if code == 0 then return nil end
   local idx = code - M.base + 1
   if idx < 1 or idx > #M.lut then return nil end
   local result = M.lut:sub(idx, idx)
