@@ -11,7 +11,7 @@ M.config = {
     enabled = true,
   },
   pinyin_jump = {
-    enabled = true,
+    enabled = false,
   },
 }
 
