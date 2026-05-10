@@ -28,7 +28,7 @@ local function switch_im(path, im_id)
   if not im_id or im_id == "" then
     return
   end
-  vim.loop.spawn(path, { args = { im_id } }, function() end)
+  vim.system({ path, im_id })
 end
 
 local function get_current_im(path)
