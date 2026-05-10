@@ -122,6 +122,7 @@ end
 local function make_pinyin_jump(cmd, backward)
   return function()
     local char = vim.fn.getcharstr()
+    vim.notify("getcharstr returned: '" .. tostring(char) .. "' (len=" .. #char .. ")", vim.log.levels.INFO)
     if char == "" or char == "\x1b" then
       return
     end
