@@ -138,6 +138,12 @@ local function make_pinyin_jump(cmd, backward)
       -- idx 是 1-based，str_byteindex 需要 0-based
       local byte_pos = vim.str_byteindex(line, idx - 1)
       vim.api.nvim_win_set_cursor(0, {row, byte_pos})
+      -- 设置字符搜索状态，让 ; 和 , 能重复
+      vim.fn.setcharsearch({
+        char = matched_char,
+        forward = backward and 0 or 1,
+        until_ = (cmd == "t" or cmd == "T") and 1 or 0,
+      })
     else
       vim.api.nvim_feedkeys(cmd .. char, "n", false)
     end
