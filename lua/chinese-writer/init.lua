@@ -59,15 +59,20 @@ local function setup_im_switch(cfg)
         M.last_im = current
       end
       switch_im(cfg.im_select_path, cfg.default_im)
-      vim.notify("chinese-writer: switched to " .. cfg.default_im, vim.log.levels.INFO)
+      -- 切换完成后再查询确认
+      local after = get_current_im(cfg.im_select_path)
+      vim.notify("chinese-writer: after InsertLeave, im=" .. tostring(after), vim.log.levels.INFO)
     end,
   })
 
   vim.api.nvim_create_autocmd("InsertEnter", {
     group = group,
     callback = function()
+      vim.notify("chinese-writer: InsertEnter, last_im=" .. tostring(M.last_im), vim.log.levels.INFO)
       if M.last_im and M.last_im ~= cfg.default_im then
         switch_im(cfg.im_select_path, M.last_im)
+        local after = get_current_im(cfg.im_select_path)
+        vim.notify("chinese-writer: after InsertEnter, im=" .. tostring(after), vim.log.levels.INFO)
       end
     end,
   })
