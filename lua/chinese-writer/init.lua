@@ -162,7 +162,8 @@ local function repeat_search(reverse)
       return
     end
     local char = M.last_search.char
-    local backward = M.last_search.backward
+    local saved_backward = M.last_search.backward
+    local backward = saved_backward
     if reverse then
       backward = not backward
     end
@@ -171,6 +172,8 @@ local function repeat_search(reverse)
       backward,
       char
     )
+    -- 恢复原始方向，不让 , 改变保存的状态
+    M.last_search.backward = saved_backward
   end
 end
 
