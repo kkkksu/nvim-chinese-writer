@@ -11,12 +11,11 @@ M.config = {
     enabled = true,
   },
   pinyin_jump = {
-    enabled = false,
+    enabled = true,
   },
 }
 
 M.enabled = false
-M.original_maps = {}
 
 -- ============================
 -- 输入法切换
@@ -93,73 +92,84 @@ local function setup_punct_map(cfg)
 end
 
 -- ============================
--- 中文写作模式 (f/t/F/T 增强)
+-- 拼音首字母跳转 (LUT 方案)
 -- ============================
 
-local function make_pinyin_jump(cmd, path, chinese_im, default_im)
+local function find_next_pinyin(line, start_col, target, backward)
+  local ok, lut = pcall(require, "chinese-writer.pinyin-lut")
+  if not ok then
+    return nil, nil
+  end
+
+  local step = backward and -1 or 1
+  local s = backward and math.min(start_col - 1, #line) or math.min(start_col + 1, #line)
+  local e = backward and 1 or #line
+
+  for i = s, e, step do
+    local c = line:sub(i, i)
+    -- 英文字符直接匹配
+    if c:lower() == target then
+      return i, c
+    end
+    -- 中文字符拼音首字母匹配
+    local first = lut.get_first_letter(c)
+    if first == target then
+      return i, c
+    end
+  end
+
+  return nil, nil
+end
+
+local function make_pinyin_jump(cmd, backward)
   return function()
-    -- 切换到中文输入法，让用户输入目标字符
-    switch_im(path, chinese_im)
-    -- 获取用户输入的字符（可以是中文字符）
     local char = vim.fn.getcharstr()
-    -- 立即切回英文
-    switch_im(path, default_im)
-    -- 执行原始的 f/t/F/T 命令
-    if char and char ~= "" then
+    if char == "" or char == "\x1b" then
+      return
+    end
+
+    local target = char:lower()
+    local line = vim.api.nvim_get_current_line()
+    local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+    col = col + 1 -- 1-based
+
+    local pos, matched_char = find_next_pinyin(line, col, target, backward)
+    if pos and matched_char then
+      -- 用 feedkeys 让 Neovim 记录搜索状态，支持 ; 和 ,
+      vim.api.nvim_feedkeys(cmd .. matched_char, "n", false)
+    else
+      -- 没找到，回退到默认行为
       vim.api.nvim_feedkeys(cmd .. char, "n", false)
     end
   end
 end
 
-function M.enable_chinese_writer_mode()
-  local cfg = M.config.im_switch
-  local path, chinese, default = cfg.im_select_path, cfg.chinese_im, cfg.default_im
-
-  -- 保存原始映射（如果有）
-  for _, key in ipairs({ "f", "F", "t", "T" }) do
-    local existing = vim.fn.maparg(key, "n", false, true)
-    if existing and existing.lhs then
-      M.original_maps[key] = existing
-    end
-  end
-
-  -- 设置新映射
+function M.enable_pinyin_jump()
   for _, mode in ipairs({ "n", "x", "o" }) do
-    vim.keymap.set(mode, "f", make_pinyin_jump("f", path, chinese, default), { desc = "Chinese writer f" })
-    vim.keymap.set(mode, "F", make_pinyin_jump("F", path, chinese, default), { desc = "Chinese writer F" })
-    vim.keymap.set(mode, "t", make_pinyin_jump("t", path, chinese, default), { desc = "Chinese writer t" })
-    vim.keymap.set(mode, "T", make_pinyin_jump("T", path, chinese, default), { desc = "Chinese writer T" })
+    vim.keymap.set(mode, "f", make_pinyin_jump("f", false), { desc = "Pinyin jump forward" })
+    vim.keymap.set(mode, "F", make_pinyin_jump("F", true), { desc = "Pinyin jump backward" })
+    vim.keymap.set(mode, "t", make_pinyin_jump("t", false), { desc = "Pinyin till forward" })
+    vim.keymap.set(mode, "T", make_pinyin_jump("T", true), { desc = "Pinyin till backward" })
   end
-
   M.enabled = true
-  vim.notify("Chinese Writer Mode: ON", vim.log.levels.INFO)
+  vim.notify("Chinese Writer Mode: ON (pinyin jump)", vim.log.levels.INFO)
 end
 
-function M.disable_chinese_writer_mode()
-  -- 删除映射
+function M.disable_pinyin_jump()
   for _, mode in ipairs({ "n", "x", "o" }) do
     for _, key in ipairs({ "f", "F", "t", "T" }) do
       pcall(vim.keymap.del, mode, key)
     end
   end
-
-  -- 恢复原始映射（如果有）
-  for key, map in pairs(M.original_maps) do
-    if map then
-      vim.fn.mapset(map)
-    end
-  end
-  M.original_maps = {}
-
   M.enabled = false
   vim.notify("Chinese Writer Mode: OFF", vim.log.levels.INFO)
 end
 
 function M.toggle()
   if M.enabled then
-    M.disable_chinese_writer_mode()
+    M.disable_pinyin_jump()
   else
-    M.enable_chinese_writer_mode()
+    M.enable_pinyin_jump()
   end
 end
 
@@ -215,6 +225,10 @@ function M.setup(opts)
 
   if M.config.punct_map.enabled then
     setup_punct_map(M.config.punct_map)
+  end
+
+  if M.config.pinyin_jump.enabled then
+    M.enable_pinyin_jump()
   end
 
   -- 注册命令
