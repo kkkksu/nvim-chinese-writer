@@ -95,29 +95,35 @@ end
 -- 拼音首字母跳转 (LUT 方案)
 -- ============================
 
-local function find_next_pinyin(line, start_col, target, backward)
+local function find_next_pinyin(chars, start_idx, target, backward)
   local ok, lut = pcall(require, "chinese-writer.pinyin-lut")
   if not ok then
+    vim.notify("chinese-writer: pinyin-lut not found", vim.log.levels.WARN)
     return nil, nil
   end
 
   local step = backward and -1 or 1
-  local s = backward and math.min(start_col - 1, #line) or math.min(start_col + 1, #line)
-  local e = backward and 1 or #line
+  local s = backward and math.min(start_idx - 1, #chars) or math.min(start_idx + 1, #chars)
+  local e = backward and 1 or #chars
+
+  vim.notify(string.format("find_next_pinyin: target=%s, start=%d, end=%d, step=%d, chars_count=%d", target, s, e, step, #chars), vim.log.levels.INFO)
 
   for i = s, e, step do
-    local c = line:sub(i, i)
+    local c = chars[i]
     -- 英文字符直接匹配
     if c:lower() == target then
+      vim.notify(string.format("find_next_pinyin: matched EN at %d, char='%s'", i, c), vim.log.levels.INFO)
       return i, c
     end
     -- 中文字符拼音首字母匹配
     local first = lut.get_first_letter(c)
     if first == target then
+      vim.notify(string.format("find_next_pinyin: matched CN at %d, char='%s', pinyin=%s", i, c, first), vim.log.levels.INFO)
       return i, c
     end
   end
 
+  vim.notify("find_next_pinyin: no match", vim.log.levels.INFO)
   return nil, nil
 end
 
@@ -130,15 +136,26 @@ local function make_pinyin_jump(cmd, backward)
 
     local target = char:lower()
     local line = vim.api.nvim_get_current_line()
-    local row, col = unpack(vim.api.nvim_win_get_cursor(0))
-    col = col + 1 -- 1-based
+    -- 按字符分割（正确处理 UTF-8 多字节字符）
+    local chars = vim.fn.split(line, '\\zs')
+    local row, col_byte = unpack(vim.api.nvim_win_get_cursor(0))
+    -- 将字节位置转换为字符索引
+    local col_char = vim.str_utfindex(line, col_byte)
 
-    local pos, matched_char = find_next_pinyin(line, col, target, backward)
-    if pos and matched_char then
+    vim.notify(string.format("pinyin_jump: cmd=%s, target=%s, col_byte=%d, col_char=%d, line='%s'", cmd, target, col_byte, col_char, line), vim.log.levels.INFO)
+
+    local idx, matched_char = find_next_pinyin(chars, col_char, target, backward)
+    if idx and matched_char then
+      -- 将字符索引转换回字节位置
+      local byte_pos = vim.str_byteindex(line, idx)
+      vim.notify(string.format("pinyin_jump: jumping to byte=%d, char='%s'", byte_pos, matched_char), vim.log.levels.INFO)
+      vim.api.nvim_win_set_cursor(0, {row, byte_pos})
       -- 用 feedkeys 让 Neovim 记录搜索状态，支持 ; 和 ,
-      vim.api.nvim_feedkeys(cmd .. matched_char, "n", false)
+      vim.schedule(function()
+        vim.api.nvim_feedkeys(cmd .. matched_char, "n", false)
+      end)
     else
-      -- 没找到，回退到默认行为
+      vim.notify("pinyin_jump: fallback to default " .. cmd .. char, vim.log.levels.INFO)
       vim.api.nvim_feedkeys(cmd .. char, "n", false)
     end
   end
