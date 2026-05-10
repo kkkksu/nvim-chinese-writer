@@ -14,7 +14,7 @@ All features are **disabled by default**. Use `:CW` or `:ChineseWriterToggle` to
 
 - Neovim >= 0.8
 - macOS (for input method switching)
-- [im-select](https://github.com/daipeihong/im-select) installed at `~/.local/bin/im-select`
+- [im-select](https://github.com/daipeihust/im-select) installed at `~/.local/bin/im-select`
 
 ## Installation
 
@@ -56,13 +56,13 @@ return {
 ### Pinyin jump examples
 
 ```
-我爱北京天安门也看也吃也喝
+谁说程序员不能写作？谁说写作的不能是程序员？
 ```
 
-- Cursor on 我, press `fa` → jump to **爱** (ai)
-- Cursor on 我, press `fy` → jump to **也** (ye)
-- Press `;` → jump to next **也**
-- Press `,` → jump back to previous **也**
+- Cursor on the first `说`, press `fn` → jump to the first **能** (neng)
+- Cursor on the first `能`, press `fx` → jump to **写** (xie)
+- Press `;` → jump to next **写**
+- Press `,` → jump back to previous **写**
 
 ## Custom configuration
 
