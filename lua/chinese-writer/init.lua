@@ -5,7 +5,6 @@ M.config = {
     enabled = true,
     im_select_path = vim.fn.expand("~/.local/bin/im-select"),
     default_im = "com.apple.keylayout.ABC",
-    -- 你常用的中文输入法 ID，默认 macOS 拼音
     chinese_im = "com.apple.inputmethod.SCIM.ITABC",
   },
   punct_map = {
@@ -16,8 +15,11 @@ M.config = {
   },
 }
 
+M.enabled = false
+M.original_maps = {}
+
 -- ============================
--- 输入法自动切换
+-- 输入法切换
 -- ============================
 
 local function switch_im(path, im_id)
@@ -25,44 +27,6 @@ local function switch_im(path, im_id)
     return
   end
   vim.system({ path, im_id }):wait()
-end
-
-local function setup_im_switch(cfg)
-  if vim.fn.executable(cfg.im_select_path) == 0 then
-    vim.notify("chinese-writer: im-select not found at " .. cfg.im_select_path, vim.log.levels.WARN)
-    return
-  end
-
-  local group = vim.api.nvim_create_augroup("ChineseWriterIM", { clear = true })
-
-  -- 离开 Insert 模式：切回英文
-  vim.api.nvim_create_autocmd("InsertLeave", {
-    group = group,
-    callback = function()
-      switch_im(cfg.im_select_path, cfg.default_im)
-    end,
-  })
-
-  -- 进入 Insert 模式：切到中文
-  vim.api.nvim_create_autocmd("InsertEnter", {
-    group = group,
-    callback = function()
-      switch_im(cfg.im_select_path, cfg.chinese_im)
-    end,
-  })
-
-  -- 获得焦点时根据当前模式调整
-  vim.api.nvim_create_autocmd("FocusGained", {
-    group = group,
-    callback = function()
-      local mode = vim.api.nvim_get_mode().mode
-      if mode:sub(1, 1) == "i" or mode:sub(1, 1) == "I" then
-        switch_im(cfg.im_select_path, cfg.chinese_im)
-      else
-        switch_im(cfg.im_select_path, cfg.default_im)
-      end
-    end,
-  })
 end
 
 -- ============================
@@ -129,14 +93,113 @@ local function setup_punct_map(cfg)
 end
 
 -- ============================
--- 拼音跳转（预留接口）
+-- 中文写作模式 (f/t/F/T 增强)
 -- ============================
 
-local function setup_pinyin_jump(cfg)
-  if not cfg.enabled then
+local function make_pinyin_jump(cmd, path, chinese_im, default_im)
+  return function()
+    -- 切换到中文输入法，让用户输入目标字符
+    switch_im(path, chinese_im)
+    -- 获取用户输入的字符（可以是中文字符）
+    local char = vim.fn.getcharstr()
+    -- 立即切回英文
+    switch_im(path, default_im)
+    -- 执行原始的 f/t/F/T 命令
+    if char and char ~= "" then
+      vim.api.nvim_feedkeys(cmd .. char, "n", false)
+    end
+  end
+end
+
+function M.enable_chinese_writer_mode()
+  local cfg = M.config.im_switch
+  local path, chinese, default = cfg.im_select_path, cfg.chinese_im, cfg.default_im
+
+  -- 保存原始映射（如果有）
+  for _, key in ipairs({ "f", "F", "t", "T" }) do
+    local existing = vim.fn.maparg(key, "n", false, true)
+    if existing and existing.lhs then
+      M.original_maps[key] = existing
+    end
+  end
+
+  -- 设置新映射
+  for _, mode in ipairs({ "n", "x", "o" }) do
+    vim.keymap.set(mode, "f", make_pinyin_jump("f", path, chinese, default), { desc = "Chinese writer f" })
+    vim.keymap.set(mode, "F", make_pinyin_jump("F", path, chinese, default), { desc = "Chinese writer F" })
+    vim.keymap.set(mode, "t", make_pinyin_jump("t", path, chinese, default), { desc = "Chinese writer t" })
+    vim.keymap.set(mode, "T", make_pinyin_jump("T", path, chinese, default), { desc = "Chinese writer T" })
+  end
+
+  M.enabled = true
+  vim.notify("Chinese Writer Mode: ON", vim.log.levels.INFO)
+end
+
+function M.disable_chinese_writer_mode()
+  -- 删除映射
+  for _, mode in ipairs({ "n", "x", "o" }) do
+    for _, key in ipairs({ "f", "F", "t", "T" }) do
+      pcall(vim.keymap.del, mode, key)
+    end
+  end
+
+  -- 恢复原始映射（如果有）
+  for key, map in pairs(M.original_maps) do
+    if map then
+      vim.fn.mapset(map)
+    end
+  end
+  M.original_maps = {}
+
+  M.enabled = false
+  vim.notify("Chinese Writer Mode: OFF", vim.log.levels.INFO)
+end
+
+function M.toggle()
+  if M.enabled then
+    M.disable_chinese_writer_mode()
+  else
+    M.enable_chinese_writer_mode()
+  end
+end
+
+-- ============================
+-- 输入法自动切换
+-- ============================
+
+local function setup_im_switch(cfg)
+  if vim.fn.executable(cfg.im_select_path) == 0 then
+    vim.notify("chinese-writer: im-select not found at " .. cfg.im_select_path, vim.log.levels.WARN)
     return
   end
-  vim.notify("chinese-writer: pinyin_jump is not yet implemented", vim.log.levels.INFO)
+
+  local group = vim.api.nvim_create_augroup("ChineseWriterIM", { clear = true })
+
+  vim.api.nvim_create_autocmd("InsertLeave", {
+    group = group,
+    callback = function()
+      switch_im(cfg.im_select_path, cfg.default_im)
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("InsertEnter", {
+    group = group,
+    callback = function()
+      switch_im(cfg.im_select_path, cfg.chinese_im)
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("FocusGained", {
+    group = group,
+    callback = function()
+      local mode = vim.api.nvim_get_mode().mode
+      if mode:sub(1, 1) == "i" or mode:sub(1, 1) == "I" then
+        switch_im(cfg.im_select_path, cfg.chinese_im)
+      else
+        switch_im(cfg.im_select_path, cfg.default_im)
+      end
+    end,
+  })
 end
 
 -- ============================
@@ -154,9 +217,14 @@ function M.setup(opts)
     setup_punct_map(M.config.punct_map)
   end
 
-  if M.config.pinyin_jump.enabled then
-    setup_pinyin_jump(M.config.pinyin_jump)
-  end
+  -- 注册命令
+  vim.api.nvim_create_user_command("ChineseWriterToggle", function()
+    M.toggle()
+  end, { desc = "Toggle Chinese Writer Mode" })
+
+  vim.api.nvim_create_user_command("CW", function()
+    M.toggle()
+  end, { desc = "Toggle Chinese Writer Mode" })
 end
 
 return M
