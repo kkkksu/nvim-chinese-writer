@@ -28,7 +28,8 @@ local function switch_im(path, im_id)
   if not im_id or im_id == "" then
     return
   end
-  vim.system({ path, im_id })
+  -- 同步等待确保切换完成，避免用户按太快时输入法还没切过去
+  vim.system({ path, im_id }):wait()
 end
 
 local function get_current_im(path)
