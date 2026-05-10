@@ -1,24 +1,20 @@
 local M = {}
 
 M.config = {
-  -- 输入法自动切换配置
   im_switch = {
     enabled = true,
     im_select_path = vim.fn.expand("~/.local/bin/im-select"),
     default_im = "com.apple.keylayout.ABC",
+    -- 你常用的中文输入法 ID，默认 macOS 拼音
+    chinese_im = "com.apple.inputmethod.SCIM.ITABC",
   },
-  -- 中文标点映射配置
   punct_map = {
     enabled = true,
-    -- 可在这里自定义映射，例如: mappings = { { "，", "," } }
   },
-  -- 拼音跳转配置（预留，后续实现）
   pinyin_jump = {
     enabled = false,
   },
 }
-
-M.last_im = nil
 
 -- ============================
 -- 输入法自动切换
@@ -28,18 +24,7 @@ local function switch_im(path, im_id)
   if not im_id or im_id == "" then
     return
   end
-  -- 同步等待确保切换完成，避免用户按太快时输入法还没切过去
   vim.system({ path, im_id }):wait()
-end
-
-local function get_current_im(path)
-  local ok, result = pcall(function()
-    return vim.fn.system(path):gsub("%s+", "")
-  end)
-  if ok then
-    return result
-  end
-  return nil
 end
 
 local function setup_im_switch(cfg)
@@ -50,52 +35,31 @@ local function setup_im_switch(cfg)
 
   local group = vim.api.nvim_create_augroup("ChineseWriterIM", { clear = true })
 
+  -- 离开 Insert 模式：切回英文
   vim.api.nvim_create_autocmd("InsertLeave", {
     group = group,
     callback = function()
-      local current = get_current_im(cfg.im_select_path)
-      vim.notify("chinese-writer: InsertLeave, current=" .. tostring(current), vim.log.levels.INFO)
-      if current and current ~= cfg.default_im then
-        M.last_im = current
-      end
       switch_im(cfg.im_select_path, cfg.default_im)
-      -- 切换完成后再查询确认
-      local after = get_current_im(cfg.im_select_path)
-      vim.notify("chinese-writer: after InsertLeave, im=" .. tostring(after), vim.log.levels.INFO)
     end,
   })
 
+  -- 进入 Insert 模式：切到中文
   vim.api.nvim_create_autocmd("InsertEnter", {
     group = group,
     callback = function()
-      vim.notify("chinese-writer: InsertEnter, last_im=" .. tostring(M.last_im), vim.log.levels.INFO)
-      if M.last_im and M.last_im ~= cfg.default_im then
-        switch_im(cfg.im_select_path, M.last_im)
-        local after = get_current_im(cfg.im_select_path)
-        vim.notify("chinese-writer: after InsertEnter, im=" .. tostring(after), vim.log.levels.INFO)
-      end
+      switch_im(cfg.im_select_path, cfg.chinese_im)
     end,
   })
 
+  -- 获得焦点时根据当前模式调整
   vim.api.nvim_create_autocmd("FocusGained", {
     group = group,
     callback = function()
       local mode = vim.api.nvim_get_mode().mode
       if mode:sub(1, 1) == "i" or mode:sub(1, 1) == "I" then
-        if M.last_im and M.last_im ~= cfg.default_im then
-          switch_im(cfg.im_select_path, M.last_im)
-        end
+        switch_im(cfg.im_select_path, cfg.chinese_im)
       else
         switch_im(cfg.im_select_path, cfg.default_im)
-      end
-    end,
-  })
-
-  vim.api.nvim_create_autocmd("FocusLost", {
-    group = group,
-    callback = function()
-      if M.last_im and M.last_im ~= cfg.default_im then
-        switch_im(cfg.im_select_path, M.last_im)
       end
     end,
   })
@@ -106,7 +70,6 @@ end
 -- ============================
 
 local default_punct_mappings = {
-  -- Normal / Visual / Operator 模式
   nv = {
     { "，", "," },
     { "。", "." },
@@ -128,7 +91,6 @@ local default_punct_mappings = {
     { "·", "`" },
     { "￥", "$" },
   },
-  -- Command 模式
   cmd = {
     { "：", ":" },
     { "，", "," },
@@ -175,7 +137,6 @@ local function setup_pinyin_jump(cfg)
     return
   end
   vim.notify("chinese-writer: pinyin_jump is not yet implemented", vim.log.levels.INFO)
-  -- TODO: implement f/t/F/T for chinese characters via pinyin first letter
 end
 
 -- ============================
