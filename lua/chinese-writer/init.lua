@@ -54,10 +54,12 @@ local function setup_im_switch(cfg)
     group = group,
     callback = function()
       local current = get_current_im(cfg.im_select_path)
+      vim.notify("chinese-writer: InsertLeave, current=" .. tostring(current), vim.log.levels.INFO)
       if current and current ~= cfg.default_im then
         M.last_im = current
       end
       switch_im(cfg.im_select_path, cfg.default_im)
+      vim.notify("chinese-writer: switched to " .. cfg.default_im, vim.log.levels.INFO)
     end,
   })
 
