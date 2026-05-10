@@ -130,11 +130,13 @@ local function make_pinyin_jump(cmd, backward)
     local line = vim.api.nvim_get_current_line()
     local chars = vim.fn.split(line, '\\zs')
     local row, col_byte = unpack(vim.api.nvim_win_get_cursor(0))
-    local col_char = vim.str_utfindex(line, col_byte)
+    -- vim.fn.split 返回 1-based 数组，str_utfindex 返回 0-based，统一为 1-based
+    local col_char = vim.str_utfindex(line, col_byte) + 1
 
     local idx, matched_char = find_next_pinyin(chars, col_char, target, backward)
     if idx and matched_char then
-      local byte_pos = vim.str_byteindex(line, idx)
+      -- idx 是 1-based，str_byteindex 需要 0-based
+      local byte_pos = vim.str_byteindex(line, idx - 1)
       vim.api.nvim_win_set_cursor(0, {row, byte_pos})
     else
       vim.api.nvim_feedkeys(cmd .. char, "n", false)
