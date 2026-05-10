@@ -119,34 +119,58 @@ local function find_next_pinyin(chars, start_idx, target, backward)
   return nil, nil
 end
 
+M.last_search = nil
+
+local function do_pinyin_jump(cmd, backward, char)
+  local target = char:lower()
+  local line = vim.api.nvim_get_current_line()
+  local chars = vim.fn.split(line, '\\zs')
+  local row, col_byte = unpack(vim.api.nvim_win_get_cursor(0))
+  local col_char = vim.str_utfindex(line, col_byte) + 1
+
+  local idx, matched_char = find_next_pinyin(chars, col_char, target, backward)
+  if idx and matched_char then
+    local byte_pos = vim.str_byteindex(line, idx - 1)
+    vim.api.nvim_win_set_cursor(0, {row, byte_pos})
+    -- 保存搜索状态供 ; 和 , 使用
+    M.last_search = {
+      char = matched_char,
+      backward = backward,
+      till = (cmd == "t" or cmd == "T"),
+    }
+    return true
+  end
+  return false
+end
+
 local function make_pinyin_jump(cmd, backward)
   return function()
     local char = vim.fn.getcharstr()
     if char == "" or char == "\x1b" then
       return
     end
-
-    local target = char:lower()
-    local line = vim.api.nvim_get_current_line()
-    local chars = vim.fn.split(line, '\\zs')
-    local row, col_byte = unpack(vim.api.nvim_win_get_cursor(0))
-    -- vim.fn.split 返回 1-based 数组，str_utfindex 返回 0-based，统一为 1-based
-    local col_char = vim.str_utfindex(line, col_byte) + 1
-
-    local idx, matched_char = find_next_pinyin(chars, col_char, target, backward)
-    if idx and matched_char then
-      -- idx 是 1-based，str_byteindex 需要 0-based
-      local byte_pos = vim.str_byteindex(line, idx - 1)
-      vim.api.nvim_win_set_cursor(0, {row, byte_pos})
-      -- 设置字符搜索状态，让 ; 和 , 能重复
-      vim.fn.setcharsearch({
-        char = matched_char,
-        forward = backward and 0 or 1,
-        until_ = (cmd == "t" or cmd == "T") and 1 or 0,
-      })
-    else
+    if not do_pinyin_jump(cmd, backward, char) then
       vim.api.nvim_feedkeys(cmd .. char, "n", false)
     end
+  end
+end
+
+local function repeat_search(reverse)
+  return function()
+    if not M.last_search then
+      vim.api.nvim_feedkeys(reverse and "," or ";", "n", false)
+      return
+    end
+    local char = M.last_search.char
+    local backward = M.last_search.backward
+    if reverse then
+      backward = not backward
+    end
+    do_pinyin_jump(
+      M.last_search.till and "t" or "f",
+      backward,
+      char
+    )
   end
 end
 
@@ -156,6 +180,8 @@ function M.enable_pinyin_jump()
     vim.keymap.set(mode, "F", make_pinyin_jump("F", true), { desc = "Pinyin jump backward" })
     vim.keymap.set(mode, "t", make_pinyin_jump("t", false), { desc = "Pinyin till forward" })
     vim.keymap.set(mode, "T", make_pinyin_jump("T", true), { desc = "Pinyin till backward" })
+    vim.keymap.set(mode, ";", repeat_search(false), { desc = "Repeat pinyin jump" })
+    vim.keymap.set(mode, ",", repeat_search(true), { desc = "Reverse pinyin jump" })
   end
   M.enabled = true
   vim.notify("Chinese Writer Mode: ON (pinyin jump)", vim.log.levels.INFO)
@@ -163,10 +189,11 @@ end
 
 function M.disable_pinyin_jump()
   for _, mode in ipairs({ "n", "x", "o" }) do
-    for _, key in ipairs({ "f", "F", "t", "T" }) do
+    for _, key in ipairs({ "f", "F", "t", "T", ";", "," }) do
       pcall(vim.keymap.del, mode, key)
     end
   end
+  M.last_search = nil
   M.enabled = false
   vim.notify("Chinese Writer Mode: OFF", vim.log.levels.INFO)
 end
